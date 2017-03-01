@@ -20,6 +20,7 @@ from pymongo import MongoClient
 import cv2
 import numpy as np
 import itertools
+import place_cluster
 
 client = MongoClient('127.0.0.1', 3001)
 db = client.meteor
@@ -30,6 +31,7 @@ SEARCH_DIRECTORY = "/Volumes/Antimony/NickOriginal/"
 run_images_step = True
 run_logical_images_step = True
 run_clustering_step = True
+run_place_clustering_step = True
 
 f = open("APIKEY.txt", "r")
 GOOGLE_API_KEY = f.readline().strip()
@@ -504,3 +506,11 @@ if run_clustering_step:
         db_cluster['location'] = import_clustering.find_common_location(cluster['cluster'])
 
         db.clusters.insert_one(db_cluster)
+
+if run_place_clustering_step:
+
+    ##########################################
+    # Cluster places together
+    ##########################################
+
+    place_cluster.cluster_places(db)
