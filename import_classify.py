@@ -26,7 +26,7 @@ class Classifier:
         # imagenet_2012_challenge_label_map_proto.pbtxt:
         #   Text representation of a protocol buffer mapping a label to synset ID.
         tf.app.flags.DEFINE_string(
-            'model_dir', '/Users/loganw/Documents/models/imagenet',
+            'model_dir', '/Users/loganwilliams/Documents/models/imagenet',
             """Path to classify_image_graph_def.pb, """
             """imagenet_synset_to_human_label_map.txt, and """
             """imagenet_2012_challenge_label_map_proto.pbtxt.""")
@@ -63,7 +63,7 @@ class Classifier:
                                 float(count * block_size) / float(total_size) * 100.0))
                 sys.stdout.flush()
 
-            filepath, _ = urllib.request.urlretrieve(DATA_URL,
+            filepath, _ = urllib.request.urlretrieve(self.DATA_URL,
                                                      filepath,
                                                      _progress)
             print()

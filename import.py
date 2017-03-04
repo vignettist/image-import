@@ -25,10 +25,13 @@ import place_cluster
 client = MongoClient('127.0.0.1', 3001)
 db = client.meteor
 
-PREFIX_DIR = "/Volumes/Antimony/Nick/"
-SEARCH_DIRECTORY = "/Volumes/Antimony/NickOriginal/"
+PREFIX_DIR = "/Users/loganwilliams/Documents/vignette-photos/"
+SEARCH_DIRECTORY = "/Volumes/Antimony/bilal_new/"
 
-run_images_step = True
+extract_metadata_step = True
+tf_step = True
+face_step = True
+social_interest_step = True
 run_logical_images_step = True
 run_clustering_step = True
 run_place_clustering_step = True
@@ -47,13 +50,16 @@ def getExifFromImage(img):
             if k in PIL.ExifTags.TAGS }
 
 def getExifTime(exif):
-    if 'DateTimeOriginal' in exif and not exif['DateTimeOriginal'] == '':
-        return datetime.datetime.strptime(exif['DateTimeOriginal'],'%Y:%m:%d %H:%M:%S')
-    elif 'DateTime' in exif and not exif['DateTime'] == '':
-        # print 'DateTime found'
-        return datetime.datetime.strptime(exif['DateTime'],'%Y:%m:%d %H:%M:%S')
-    else:
+    if exif is None:
         return None
+    else:
+        if 'DateTimeOriginal' in exif and not exif['DateTimeOriginal'] == '':
+            return datetime.datetime.strptime(exif['DateTimeOriginal'],'%Y:%m:%d %H:%M:%S')
+        elif 'DateTime' in exif and not exif['DateTime'] == '':
+            # print 'DateTime found'
+            return datetime.datetime.strptime(exif['DateTime'],'%Y:%m:%d %H:%M:%S')
+        else:
+            return None
 
 def convertGPSToDecimal(gps):
     return float(gps[0][0])/gps[0][1] + float(gps[1][0])/(60.0*gps[1][1]) + float(gps[2][0])/(60.0*60.0*gps[2][1])
@@ -161,18 +167,18 @@ def getFlashFired(exif):
     return flash_fired
 
 def get_image_metadata(image_filename, tz=None):
+    print image_filename
     img = PIL.Image.open(image_filename)
     exif = getExifFromImage(img)
     img.close()
-
+=
     image_entry = {}    
     image_entry["original_uri"] = image_filename
 
     exif_time = getExifTime(exif)
 
     # without information on when the image was taken, it's not useful. this is the minimum required metadata.
-    if exif_time is not None:
-        # exif_time = t.isoformat()
+    if exif_time is not None and ((exif['Make'] != 'Canon') if 'Make' in exif.keys() else True):
 
         # extract information from GPS metadata
         (lat, lon, alt, gps_time, gps_direction) = getGPS(exif)
@@ -186,18 +192,18 @@ def get_image_metadata(image_filename, tz=None):
         image_entry["exposure_time"] = getExposureTime(exif)
         image_entry["flash_fired"] = getFlashFired(exif)
 
-        point = (lon, lat)
-
         timezonefinder = TimezoneFinder()
 
         try:
-            tz = timezone(timezonefinder.timezone_at(*point))
+            tz = timezone(timezonefinder.timezone_at(lng=lon, lat=lat))
         except ValueError:
+            print "No lat lon, using previous timezone"
+        except TypeError:
             print "No lat lon, using previous timezone"
         except AttributeError:
             try:
                 print "searching area"
-                tz = timezone(timezonefinder.closest_timezone_at(*point))
+                tz = timezone(timezonefinder.closest_timezone_at(lng=lon, lat=lat))
             except AttributeError:
                 print "failed to find timezone, using previous"
 
@@ -206,8 +212,9 @@ def get_image_metadata(image_filename, tz=None):
             if (exif_time.minute == gps_time.minute) and (abs(exif_time.second - gps_time.second) < 2):
                 exif_time = exif_time.replace(second=gps_time.second, microsecond=gps_time.microsecond)
 
-        tz_offset = tz.utcoffset(exif_time)
-        tz_name = tz.tzname(exif_time)
+        # is_dst is only used when the time is ambiguous (thanks, Daylight Savings Time!)
+        tz_offset = tz.utcoffset(exif_time, is_dst=False)
+        tz_name = tz.tzname(exif_time, is_dst=False)
 
         # convert to UTC
         exif_time = exif_time - tz_offset
@@ -220,6 +227,8 @@ def get_image_metadata(image_filename, tz=None):
             geolocation_url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=" + str(lat) + "," + str(lon) + "&key=" + GOOGLE_API_KEY
             geolocation = json.loads(urllib2.urlopen(geolocation_url).read())
             image_entry["geolocation"] = geolocation
+    else:
+        print 'skipping processing'
 
     # orient and resize images
 
@@ -279,7 +288,7 @@ def calc_ratio(img1, img2):
 
     return (ratio, ransac_ratio, homography_difference, len(kp1) + len(kp2))
 
-if (run_images_step):
+if extract_metadata_step:
 
     ##########################################
     # walk 
@@ -293,35 +302,61 @@ if (run_images_step):
         for filename in file_list:
             if filename[-3:].lower() == 'jpg':
                 (new_image, previous_tz) = get_image_metadata(dir_name + "/" + filename, tz=previous_tz)
-                image_list.append(new_image)
+                db.images.insert_one(new_image)
 
+if tf_step:
 
     ##########################################
     # TensorFlow run semantic analysis
     ##########################################
 
     print("TF CLASSIFIER")
+    image_list = list(db.images.find({'datetime': {'$exists': True}}))
     TF = Classifier(PREFIX_DIR)
     images = TF.run_inference_on_images(image_list)
+    db.images.drop()
+    db.images.insert_many(images)
 
-    ##########################################
-    # Old face detection
-    ##########################################
-
-    print("HAAR CASCADE CLASSIFIER")
-    for i in range(len(images)):
-        cc_faces = import_cc_faces.detect_faces(PREFIX_DIR + images[i]['resized_uris']['1280'], images[i]['size'])  
-        images[i]['faces'] = cc_faces
+if face_step:
 
     ##########################################
     # Face detection/identification
     ##########################################
 
     print("OPENFACE CLASSIFIER")
+    images = list(db.images.find({'datetime': {'$exists': True}}))
     ff = import_faces.FaceFinder()
-    for i in range(len(images)):  
+    t = time.time()
+    for i in range(len(images)):
+        if (i % 100) == 0:
+            elapsed = time.time() - t
+            t = time.time()
+            
+            print( str(i) + '/' + str(len(images)) + ', ' + str(elapsed/100.0) + ' seconds per image')
+
         faces = ff.getFaces(PREFIX_DIR + images[i]['resized_uris']['1280'])
         images[i]['openfaces'] = faces
+
+    db.images.drop()
+    db.images.insert_many(images)
+
+if social_interest_step:
+
+    ##########################################
+    # Old face detection
+    ##########################################
+
+    print("HAAR CASCADE CLASSIFIER")
+    images = list(db.images.find({'datetime': {'$exists': True}}))
+    t = time.time()
+    for i in range(len(images)):
+        if (i % 100) == 0:
+            elapsed = time.time() - t
+            t = time.time()
+            
+            print( str(i) + '/' + str(len(images)) + ', ' + str(elapsed/100.0) + ' seconds per image')
+        cc_faces = import_cc_faces.detect_faces(PREFIX_DIR + images[i]['resized_uris']['1280'], images[i]['size'])  
+        images[i]['faces'] = cc_faces
 
     ##########################################
     # Social interest analysis (dependent on old face classification method -- retrain?)
@@ -342,6 +377,7 @@ if (run_images_step):
     # Insert images into database
     ##########################################
 
+    db.images.drop()
     db.images.insert_many(images)
 
 if run_logical_images_step:

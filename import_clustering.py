@@ -5,7 +5,6 @@ import datetime
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-import pywt
 import scipy.sparse
 import scipy.misc
 from scipy.ndimage import filters
@@ -13,7 +12,6 @@ import urllib2
 import pymongo
 from bson.objectid import ObjectId
 import json
-from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
 import itertools
 from sklearn import cluster as clus
@@ -25,7 +23,14 @@ def find_common_location(cluster):
     try:
         metro_areas = [lookup_usa_address(v) for v in locations]
     except:
-        metro_areas = [lookup_usa_address(v) for v in [v['results'][1]['address_components'] for v in cluster['geolocation'] if v['status'] != u'ZERO_RESULTS']]
+        try:
+            metro_areas = [lookup_usa_address(v) for v in [v['results'][1]['address_components'] for v in cluster['geolocation'] if v['status'] != u'ZERO_RESULTS']]
+        except:
+            try:
+                metro_areas = [lookup_usa_address(v) for v in [v['results'][2]['address_components'] for v in cluster['geolocation'] if v['status'] != u'ZERO_RESULTS']]
+            except:
+                metro_areas = None
+
     name = ''
     
     o = 1
@@ -83,27 +88,30 @@ def find_common_location(cluster):
 msa_list = pd.read_excel('msa_list.xls', skiprows=2)
 
 def lookup_usa_address(geolocation):
-    state_name = [v['long_name'] for v in geolocation if u'administrative_area_level_1' in v['types']]
+    country_name = [v['long_name'] for v in geolocation if u'country' in v['types']]
+    if country_name[0] == 'United States':
+        state_name = [v['long_name'] for v in geolocation if u'administrative_area_level_1' in v['types']]
+        if state_name:
+            state_name = state_name[0]
+            state_list = msa_list[(msa_list['State Name']) == state_name]
 
-    if state_name:
-        state_name = state_name[0]
-        state_list = msa_list[(msa_list['State Name']) == state_name]
+            if not state_list.empty:
+                # special case for DC because its the only US address without an "administrative_area_level_2"
+                if state_name == 'District of Columbia':
+                    county_name = 'District of Columbia'
+                else:
+                    county_name = [v['long_name'] for v in geolocation if u'administrative_area_level_2' in v['types']][0]
 
-        if not state_list.empty:
-            # special case for DC because its the only US address without an "administrative_area_level_2"
-            if state_name == 'District of Columbia':
-                county_name = 'District of Columbia'
-            else:
-                county_name = [v['long_name'] for v in geolocation if u'administrative_area_level_2' in v['types']][0]
+                match = state_list[state_list['County/County Equivalent'] == county_name]
 
-            match = state_list[state_list['County/County Equivalent'] == county_name]
+                if len(match) > 0:
+                    cbsa_title = match['CBSA Title'].iloc[0]
+                    cbsa_title = cbsa_title.split(',')[0]
+                    cbsa_title = cbsa_title.split('-')[0]
 
-            if len(match) > 0:
-                cbsa_title = match['CBSA Title'].iloc[0]
-                cbsa_title = cbsa_title.split(',')[0]
-                cbsa_title = cbsa_title.split('-')[0]
-
-                return 'the ' + cbsa_title + ' area'
+                    return 'the ' + cbsa_title + ' area'
+                else:
+                    return None
             else:
                 return None
         else:

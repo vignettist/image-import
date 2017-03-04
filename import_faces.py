@@ -25,6 +25,7 @@ class FaceFinder:
                                       landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
             if alignedFace is None:
                 raise Exception("Unable to align image: {}".format(imgPath))
+
             rep = self.net.forward(alignedFace)
             
             face['rect'] = [bb.left(), bb.top(), bb.width(), bb.height()]
