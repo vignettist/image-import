@@ -28,13 +28,14 @@ db = client.meteor
 PREFIX_DIR = "/Users/loganwilliams/Documents/vignette-photos/"
 SEARCH_DIRECTORY = "/Volumes/Antimony/bilal_new/"
 
-extract_metadata_step = True
-tf_step = True
-face_step = True
-social_interest_step = True
-run_logical_images_step = True
-run_clustering_step = True
-run_place_clustering_step = True
+extract_metadata_step = False
+tf_step = False
+face_step = False
+social_interest_step = False
+run_logical_images_step = False
+run_clustering_step = False
+run_place_clustering_step = False
+run_cluster_outliner_step = True
 
 f = open("APIKEY.txt", "r")
 GOOGLE_API_KEY = f.readline().strip()
@@ -171,7 +172,7 @@ def get_image_metadata(image_filename, tz=None):
     img = PIL.Image.open(image_filename)
     exif = getExifFromImage(img)
     img.close()
-=
+
     image_entry = {}    
     image_entry["original_uri"] = image_filename
 
@@ -550,3 +551,11 @@ if run_place_clustering_step:
     ##########################################
 
     place_cluster.cluster_places(db)
+
+if run_cluster_outliner_step:
+
+    ##########################################
+    # Calculate outline and centroid of clusters
+    ##########################################
+
+    place_cluster.outline_clusters(db)

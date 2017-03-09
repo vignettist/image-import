@@ -3,6 +3,7 @@ import numpy as np
 import pymongo
 import pandas as pd
 import sklearn
+from shapely.geometry import MultiPoint
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -88,4 +89,26 @@ def cluster_places(db):
                 else:
                     print cluster
                     print "?"
-                
+
+def outline_clusters(db):
+    clusters = list(db.clusters.find({}))
+
+    for i in range(len(clusters)):
+        points = MultiPoint(clusters[i]['locations']['coordinates'])
+        geom = {}
+        geom['type'] = 'Polygon'
+        
+        try:
+            p = points.convex_hull
+            p = p.buffer(np.sqrt(p.area) * 0.33)
+            geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
+        except:
+            p = points.buffer(0.005)
+            p = p.convex_hull
+            geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
+        
+        centroid = {'type': 'Point'}
+        centroid['coordinates'] = list(p.centroid.coords)[0]
+        
+        db.clusters.update_one({'_id': clusters[i]['_id']}, {'$set': {'boundary': geom, 'centroid': centroid}})
+        
