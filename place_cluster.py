@@ -4,6 +4,7 @@ import pymongo
 import pandas as pd
 import sklearn
 from shapely.geometry import MultiPoint
+from geopy.distance import vincenty
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -110,5 +111,11 @@ def outline_clusters(db):
         centroid = {'type': 'Point'}
         centroid['coordinates'] = list(p.centroid.coords)[0]
         
-        db.clusters.update_one({'_id': clusters[i]['_id']}, {'$set': {'boundary': geom, 'centroid': centroid}})
+        n = len(clusters[i]['locations']['coordinates'])
+        distance = 0
+        if (n > 1):
+            for j in range(n-1):
+                distance += vincenty((clusters[i]['locations']['coordinates'][j][1], clusters[i]['locations']['coordinates'][j][0]), (clusters[i]['locations']['coordinates'][j+1][1], clusters[i]['locations']['coordinates'][j+1][0])).meters/1000
+
+        db.clusters.update_one({'_id': clusters[i]['_id']}, {'$set': {'boundary': geom, 'centroid': centroid, 'distance': distance}})
         

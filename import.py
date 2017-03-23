@@ -26,15 +26,15 @@ client = MongoClient('127.0.0.1', 3001)
 db = client.meteor
 
 PREFIX_DIR = "/Users/loganwilliams/Documents/vignette-photos/"
-SEARCH_DIRECTORY = "/Volumes/Antimony/bilal_new/"
+SEARCH_DIRECTORY = "/Users/loganwilliams/Desktop/logan/"
 
 extract_metadata_step = False
 tf_step = False
 face_step = False
-social_interest_step = False
-run_logical_images_step = False
-run_clustering_step = False
-run_place_clustering_step = False
+social_interest_step = True
+run_logical_images_step = True
+run_clustering_step = True
+run_place_clustering_step = True
 run_cluster_outliner_step = True
 
 f = open("APIKEY.txt", "r")
@@ -179,7 +179,7 @@ def get_image_metadata(image_filename, tz=None):
     exif_time = getExifTime(exif)
 
     # without information on when the image was taken, it's not useful. this is the minimum required metadata.
-    if exif_time is not None and ((exif['Make'] != 'Canon') if 'Make' in exif.keys() else True):
+    if exif_time is not None:
 
         # extract information from GPS metadata
         (lat, lon, alt, gps_time, gps_direction) = getGPS(exif)
