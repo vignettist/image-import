@@ -16,8 +16,10 @@ import matplotlib.pyplot as plt
 import itertools
 from sklearn import cluster as clus
 from shapely.geometry import MultiPoint
+from geopy.distance import vincenty
 
 def find_common_location(cluster):
+    cluster = cluster.dropna(axis=0, subset=['geolocation'])
     locations = [v['results'][0]['address_components'] for v in cluster['geolocation'] if v['status'] != u'ZERO_RESULTS']
     types = [u'country', u'administrative_area_level_1', 'metro_areas', u'administrative_area_level_2', u'locality', u'sublocality_level_1', u'neighborhood', u'sublocality_level_2']
     try:
@@ -162,6 +164,9 @@ def cluster(images, stretch_nights=5.0, timescale=12.0, algorithm='meanshift', t
     else:
         image_df['cluster_time'] = image_df['unix_time'] / timescale
 
+    # keep track of images that are missing location data
+    images_missing_location = image_df[image_df.isnull()['latitude']]
+    # remove images without location
     image_df = image_df.dropna(axis=0, subset=['latitude'])
 
     latlontimes = np.zeros((len(image_df['latitude']), 3))
@@ -185,76 +190,128 @@ def cluster(images, stretch_nights=5.0, timescale=12.0, algorithm='meanshift', t
     print(algorithm + ", threshold=" + str(threshold) + ", timescale=" + str(timescale) + ", stretch nights=" + str(stretch_nights))
     print("    " + str(n_clusters_) + " clusters")
 
-    # process the clusters to make sure that they all make sense
-
     timespans = np.zeros(n_clusters_)
     start_times = np.zeros(n_clusters_)
+    end_times = np.zeros(n_clusters_)
+    clusters = []
 
     for i in set(labels):
         cluster_mask = (labels == i)
         new_index = image_df[cluster_mask].index
         cluster = image_df.loc[new_index]
-        cluster = cluster.sort('unix_time')
+        # cluster = cluster.sort('unix_time')
         cluster.index = range(len(cluster))
+        clusters.append(list(cluster['_id']))
 
-        start_time = cluster['unix_time'][0] * 4
-        end_time = cluster['unix_time'][len(cluster) - 1] * 4
+        start_times[i] = cluster['unix_time'][0]
+        end_times[i] = cluster['unix_time'][len(cluster) - 1]
 
-        start_location = (cluster['latitude'][0], cluster.longitude[0])
-        end_location = (cluster.latitude[len(cluster) - 1], cluster.longitude[len(cluster) - 1])
+    unclustered_images = pd.DataFrame()
+    # now try to fit the photos missing locations into our clusters
+    for k in images_missing_location.index:
+        in_cluster = False
+        distance_from_end = np.zeros(n_clusters_)
+        distance_from_start = np.zeros(n_clusters_)
+        for i in set(labels):
+            if (images_missing_location.loc[k]['unix_time'] >= start_times[i]) and (images_missing_location.loc[k]['unix_time'] <= end_times[i]):
+                # easy, this just belongs in that cluster
+                if not in_cluster:
+                    clusters[i].append(images_missing_location.loc[k]['_id'])
+                    in_cluster = True
+            
+            distance_from_end[i] = images_missing_location.loc[k]['unix_time'] - end_times[i]
+            distance_from_start[i] = images_missing_location.loc[k]['unix_time'] - start_times[i]
 
-        timespan = (end_time - start_time)
-        timespans[i] = timespan
-        start_times[i] = start_time
+        # the photo didn't fit cleanly inside a cluster, but maybe it's still pretty close
+        if (not in_cluster):
+            min_distance_from_end = np.argmin(np.abs(distance_from_end))
+            min_distance_from_start = np.argmin(np.abs(distance_from_start))
 
+            min_distance = min(np.abs(distance_from_start[min_distance_from_start]), np.abs(distance_from_end[min_distance_from_end]))
+            if (min_distance < 1):
+                if np.abs(distance_from_end[min_distance_from_end]) < np.abs(distance_from_start[min_distance_from_start]):
+                    clusters[min_distance_from_end].append(images_missing_location.loc[k]['_id'])
+                else:
+                    clusters[min_distance_from_start].append(images_missing_location.loc[k]['_id'])
+            else:
+                unclustered_images.append(images_missing_location.loc[k])
 
+    # so hopefully that got a lot of the photos, but there will still be some that are pretty distant from every other cluster
+    # TODO: generate clusters from remaining unclustered images
+    return clusters
 
-    corder = np.argsort(start_times)
-    start_times = start_times[corder]
-    timespans = timespans[corder]
-    # sorted_labels = labels[corder]
-    sorted_clusters = np.arange(n_clusters_)[corder]
+def make_cluster_details(images_list, logical_images=None):
+    if logical_images is None:
+        query = []
+        for i in range(len(cluster)):
+            query.append({'_id': cluster[i]})
+        logical_images = db.logical_images.find({'$or': query})
 
+    cluster = [li for li in logical_images if li['_id'] in images_list]
+    cluster = pd.DataFrame(cluster)
+    cluster['unix_time'] = [(cluster['datetime'][i]['utc_timestamp'] - datetime.datetime(1970,1,1)).total_seconds()/(60*60*24) for i in range(len(cluster))]
+    cluster = cluster.sort('unix_time')
+    cluster.index = range(len(cluster))
 
-    clusters_structure = []
+    start_location = (cluster['latitude'][0], cluster.longitude[0])
+    end_location = (cluster.latitude[len(cluster) - 1], cluster.longitude[len(cluster) - 1])
 
-    stdevs = np.zeros(len(set(labels)))
+    db_cluster = {}
+    db_cluster['photos'] = images_list
+    db_cluster['start_time'] = cluster.iloc[0]['datetime']
+    db_cluster['end_time'] = cluster.iloc[-1]['datetime']
 
-    for i in range(n_clusters_):
-        cluster_struct = {}
+    db_cluster['times'] = [cluster.datetime[j] for j in range(len(cluster))]
 
-        cluster_mask = (labels == sorted_clusters[i])
-        new_index = image_df[cluster_mask].index
-        cluster = image_df.loc[new_index]
-        cluster = cluster.sort('unix_time')
-        cluster.index = range(len(cluster))
+    # make geoJSON
+    linestring = {}
+    linestring['type'] = "LineString"
+    linestring['coordinates'] =  [[cluster.longitude[j], cluster.latitude[j]] for j in range(len(cluster))]
+    db_cluster['locations'] = linestring
 
-        cluster_struct['cluster'] = cluster
-        cluster_struct['start_time'] = start_times[i]
-        cluster_struct['length'] = timespans[i]
-        cluster_struct['locations'] = [[cluster.longitude[j], cluster.latitude[j]] for j in range(len(cluster))]
+    start_location = {}
+    start_location['type'] = "Point"
+    start_location['coordinates'] = db_cluster['locations']['coordinates'][0]
+    db_cluster['start_location'] = start_location
 
-        cluster_struct['times'] = [cluster.datetime[j] for j in range(len(cluster))]
+    end_location = {}
+    end_location['type'] = "Point"
+    end_location['coordinates'] = db_cluster['locations']['coordinates'][-1]
+    db_cluster['end_location'] = end_location
 
-        points = MultiPoint(cluster_struct['locations'])
-        geom = {}
-        geom['type'] = 'Polygon'
-        
-        try:
-            p = points.convex_hull
-            p = p.buffer(np.sqrt(p.area) * 0.33)
-            geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
-        except:
-            p = points.buffer(0.005)
-            p = p.convex_hull
-            geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
-        
-        centroid = {'type': 'Point'}
-        centroid['coordinates'] = list(p.centroid.coords)[0]
+    db_cluster['faces'] = list(itertools.chain.from_iterable(list(cluster['openfaces'])))
+    db_cluster['location'] = find_common_location(cluster)
 
-        cluster_struct['boundary'] = geom
-        cluster_struct['centroid'] = centroid
-        
-        clusters_structure.append(cluster_struct)
+    db_cluster = outline_clusters(cluster)
 
-    return clusters_structure
+    return db_cluster
+
+# calculate some distance metrics on the cluster, its centroid, and its convex hull
+def outline_clusters(cluster):
+    points = MultiPoint(cluster['locations']['coordinates'])
+    geom = {}
+    geom['type'] = 'Polygon'
+    
+    try:
+        p = points.convex_hull
+        p = p.buffer(np.sqrt(p.area) * 0.33)
+        geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
+    except:
+        p = points.buffer(0.005)
+        p = p.convex_hull
+        geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
+    
+    centroid = {'type': 'Point'}
+    centroid['coordinates'] = list(p.centroid.coords)[0]
+    
+    n = len(cluster['locations']['coordinates'])
+    distance = 0
+    if (n > 1):
+        for j in range(n-1):
+            distance += vincenty((cluster['locations']['coordinates'][j][1], cluster['locations']['coordinates'][j][0]), (cluster['locations']['coordinates'][j+1][1], cluster['locations']['coordinates'][j+1][0])).meters/1000
+
+    cluster['boundary'] =  geom
+    cluster['centroid'] = centroid
+    cluster['distance'] = distance
+
+    return cluster

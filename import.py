@@ -25,17 +25,18 @@ import place_cluster
 client = MongoClient('127.0.0.1', 3001)
 db = client.meteor
 
-PREFIX_DIR = "/Users/loganwilliams/Documents/vignette-photos/"
-SEARCH_DIRECTORY = "/Users/loganwilliams/Desktop/logan/"
+PREFIX_DIR = "/Users/loganw/Documents/vignette-photos/loganw/"
+SEARCH_DIRECTORY = "/Users/loganw/Desktop/Walla Walla/"
+USER_ID = "KM27xnA6rMbBFiH4w"
+USERNAME = "loganw"
 
 extract_metadata_step = False
 tf_step = False
 face_step = False
-social_interest_step = True
-run_logical_images_step = True
+social_interest_step = False
+run_logical_images_step = False
 run_clustering_step = True
-run_place_clustering_step = True
-run_cluster_outliner_step = True
+run_place_clustering_step = False
 
 f = open("APIKEY.txt", "r")
 GOOGLE_API_KEY = f.readline().strip()
@@ -184,7 +185,7 @@ def get_image_metadata(image_filename, tz=None):
         # extract information from GPS metadata
         (lat, lon, alt, gps_time, gps_direction) = getGPS(exif)
         # gps_time = gps_time.isoformat() if isinstance(gps_time, time) else gps_time
-        
+
         image_entry["latitude"] = lat
         image_entry["longitude"] = lon
         image_entry["altitude"] = alt
@@ -296,13 +297,15 @@ if extract_metadata_step:
     ##########################################
     print("WALKING DIRECTORIES")
     image_list = []
-    previous_tz = None
+    previous_tz = timezone("US/Pacific")
     for dir_name, subdir_list, file_list in os.walk(SEARCH_DIRECTORY):
         print('Found directory: %s' % dir_name)
 
         for filename in file_list:
             if filename[-3:].lower() == 'jpg':
                 (new_image, previous_tz) = get_image_metadata(dir_name + "/" + filename, tz=previous_tz)
+                new_image['user_id'] = USER_ID
+                new_image['username'] = USERNAME
                 db.images.insert_one(new_image)
 
 if tf_step:
@@ -447,6 +450,8 @@ if run_logical_images_step:
             logical_images.append(logical_image)
             logical_image = [sorted_images[i+1]]
 
+    logical_images.append(logical_image)
+
     summarized_logical_images = []
 
     for i in range(len(logical_images)):
@@ -501,46 +506,23 @@ if run_logical_images_step:
 
 if run_clustering_step:
 
+    print("CLUSTERING IMAGES")
     summarized_logical_images = list(db.logical_images.find({}))
 
     ##########################################
     # Clustering
     ##########################################
 
-    clusters_structure = import_clustering.cluster(summarized_logical_images)
+    clusters = import_clustering.cluster(summarized_logical_images)
 
     ##########################################
-    # Insert clusters into database
+    # Extract relevant details and insert clusters into database
     ##########################################
 
-    for cluster in clusters_structure:
-        ids = list(cluster['cluster']['_id'])
-        db_cluster = {}
-        db_cluster['photos'] = ids
-        db_cluster['start_time'] = cluster['cluster'].iloc[0]['datetime']
-        db_cluster['end_time'] = cluster['cluster'].iloc[-1]['datetime']
-
-        db_cluster['times'] = cluster['times']
-
-        # make geoJSON
-        linestring = {}
-        linestring['type'] = "LineString"
-        linestring['coordinates'] = cluster['locations']
-        db_cluster['locations'] = linestring
-
-        start_location = {}
-        start_location['type'] = "Point"
-        start_location['coordinates'] = cluster['locations'][0]
-        db_cluster['start_location'] = start_location
-
-        end_location = {}
-        end_location['type'] = "Point"
-        end_location['coordinates'] = cluster['locations'][-1]
-        db_cluster['end_location'] = end_location
-
-        db_cluster['faces'] = list(itertools.chain.from_iterable(list(cluster['cluster']['openfaces'])))
-
-        db_cluster['location'] = import_clustering.find_common_location(cluster['cluster'])
+    for cluster in clusters:
+        db_cluster = import_clustering.make_cluster_details(cluster, logical_images=summarized_logical_images)
+        db_cluster['user_id'] = USER_ID
+        db_cluster['username'] = USERNAME
 
         db.clusters.insert_one(db_cluster)
 
@@ -550,12 +532,4 @@ if run_place_clustering_step:
     # Cluster places together
     ##########################################
 
-    place_cluster.cluster_places(db)
-
-if run_cluster_outliner_step:
-
-    ##########################################
-    # Calculate outline and centroid of clusters
-    ##########################################
-
-    place_cluster.outline_clusters(db)
+    place_cluster.cluster_places(db, USERNAME, USER_ID)

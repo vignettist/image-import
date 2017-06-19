@@ -4,7 +4,6 @@ import pymongo
 import pandas as pd
 import sklearn
 from shapely.geometry import MultiPoint
-from geopy.distance import vincenty
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -22,7 +21,7 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371 # Radius of earth in kilometers. Use 3956 for miles
     return c * r  * 1000
 
-def cluster_places(db):
+def cluster_places(db, USERNAME, USER_ID):
     images = db.logical_images
     image_list = list(images.find({}))
 
@@ -67,6 +66,8 @@ def cluster_places(db):
             place['location'] = {'type': 'Point', 'coordinates': list(cluster_center)}
             place['radius'] = cluster_radius
             place['images'] = list(image_cluster_list)
+            place['user_id'] = USER_ID
+            place['username'] = USERNAME
             
             place_id = db.places.insert_one(place).inserted_id
             
@@ -90,32 +91,3 @@ def cluster_places(db):
                 else:
                     print cluster
                     print "?"
-
-def outline_clusters(db):
-    clusters = list(db.clusters.find({}))
-
-    for i in range(len(clusters)):
-        points = MultiPoint(clusters[i]['locations']['coordinates'])
-        geom = {}
-        geom['type'] = 'Polygon'
-        
-        try:
-            p = points.convex_hull
-            p = p.buffer(np.sqrt(p.area) * 0.33)
-            geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
-        except:
-            p = points.buffer(0.005)
-            p = p.convex_hull
-            geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
-        
-        centroid = {'type': 'Point'}
-        centroid['coordinates'] = list(p.centroid.coords)[0]
-        
-        n = len(clusters[i]['locations']['coordinates'])
-        distance = 0
-        if (n > 1):
-            for j in range(n-1):
-                distance += vincenty((clusters[i]['locations']['coordinates'][j][1], clusters[i]['locations']['coordinates'][j][0]), (clusters[i]['locations']['coordinates'][j+1][1], clusters[i]['locations']['coordinates'][j+1][0])).meters/1000
-
-        db.clusters.update_one({'_id': clusters[i]['_id']}, {'$set': {'boundary': geom, 'centroid': centroid, 'distance': distance}})
-        
