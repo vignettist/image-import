@@ -240,11 +240,11 @@ def cluster(images, stretch_nights=5.0, timescale=12.0, algorithm='meanshift', t
     # TODO: generate clusters from remaining unclustered images
     return clusters
 
-def make_cluster_details(images_list, logical_images=None):
+def make_cluster_details(images_list, logical_images=None, db=None):
     if logical_images is None:
         query = []
-        for i in range(len(cluster)):
-            query.append({'_id': cluster[i]})
+        for i in range(len(images_list)):
+            query.append({'_id': images_list[i]})
         logical_images = db.logical_images.find({'$or': query})
 
     cluster = [li for li in logical_images if li['_id'] in images_list]
