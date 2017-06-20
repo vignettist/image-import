@@ -23,10 +23,10 @@ def haversine(lon1, lat1, lon2, lat2):
 
 def cluster_places(db, USERNAME, USER_ID):
     images = db.logical_images
-    image_list = list(images.find({}))
+    image_list = list(images.find({'user_id': USER_ID}))
 
-    latlons = np.array([[i['longitude'], i['latitude']] for i in image_list if 'latitude' in i.keys() and i['latitude'] is not None])
-    ids = [i['_id'] for i in image_list if 'latitude' in i.keys() and i['latitude'] is not None]
+    latlons = np.array([[i['longitude'], i['latitude']] for i in image_list if 'latitude' in i.keys() and i['latitude'] is not None and not np.isnan(i['latitude'])])
+    ids = [i['_id'] for i in image_list if 'latitude' in i.keys() and i['latitude'] is not None and not np.isnan(i['latitude'])]
 
     precomputed_distance = np.zeros((len(latlons), len(latlons)))
 

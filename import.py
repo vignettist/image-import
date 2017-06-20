@@ -36,8 +36,8 @@ face_step = False
 social_interest_step = False
 run_logical_images_step = False
 run_generate_clusters_step = False
-run_cluster_details_step = True
-run_place_clustering_step = False
+run_cluster_details_step = False
+run_place_clustering_step = True
 
 f = open("APIKEY.txt", "r")
 GOOGLE_API_KEY = f.readline().strip()
