@@ -315,7 +315,7 @@ if tf_step:
     ##########################################
 
     print("TF CLASSIFIER")
-    image_list = list(db.images.find({'datetime': {'$exists': True}}))
+    image_list = list(db.images.find({'datetime': {'$exists': True}, 'user_id': USER_ID}))
     TF = Classifier(PREFIX_DIR)
     images = TF.run_inference_on_images(image_list)
     db.images.drop()
@@ -328,7 +328,7 @@ if face_step:
     ##########################################
 
     print("OPENFACE CLASSIFIER")
-    images = list(db.images.find({'datetime': {'$exists': True}}))
+    images = list(db.images.find({'datetime': {'$exists': True}, 'user_id': USER_ID}))
     ff = import_faces.FaceFinder()
     t = time.time()
     for i in range(len(images)):
@@ -351,7 +351,7 @@ if social_interest_step:
     ##########################################
 
     print("HAAR CASCADE CLASSIFIER")
-    images = list(db.images.find({'datetime': {'$exists': True}}))
+    images = list(db.images.find({'datetime': {'$exists': True}, 'user_id': USER_ID}))
     t = time.time()
     for i in range(len(images)):
         if (i % 100) == 0:
@@ -386,7 +386,7 @@ if social_interest_step:
 
 if run_logical_images_step:
 
-    images = list(db.images.find({'datetime': {'$exists': True}}))
+    images = list(db.images.find({'datetime': {'$exists': True}, 'user_id': USER_ID}))
 
     ##########################################
     # Duplicate classification
@@ -507,7 +507,7 @@ if run_logical_images_step:
 if run_clustering_step:
 
     print("CLUSTERING IMAGES")
-    summarized_logical_images = list(db.logical_images.find({}))
+    summarized_logical_images = list(db.logical_images.find({'user_id': USER_ID}))
 
     ##########################################
     # Clustering
