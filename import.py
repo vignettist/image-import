@@ -27,15 +27,16 @@ db = client.meteor
 
 PREFIX_DIR = "/Users/loganw/Documents/vignette-photos/loganw/"
 SEARCH_DIRECTORY = "/Users/loganw/Desktop/Walla Walla/"
-USER_ID = "KM27xnA6rMbBFiH4w"
-USERNAME = "loganw"
+USER_ID = "YchQu2tWYJpspmkbf"
+USERNAME = "bilal"
 
 extract_metadata_step = False
 tf_step = False
 face_step = False
 social_interest_step = False
 run_logical_images_step = False
-run_clustering_step = True
+run_generate_clusters_step = False
+run_cluster_details_step = True
 run_place_clustering_step = False
 
 f = open("APIKEY.txt", "r")
@@ -504,7 +505,9 @@ if run_logical_images_step:
 
     db.logical_images.insert_many(summarized_logical_images)
 
-if run_clustering_step:
+summarized_logical_images = None
+
+if run_generate_clusters_step:
 
     print("CLUSTERING IMAGES")
     summarized_logical_images = list(db.logical_images.find({'user_id': USER_ID}))
@@ -515,16 +518,28 @@ if run_clustering_step:
 
     clusters = import_clustering.cluster(summarized_logical_images)
 
-    ##########################################
-    # Extract relevant details and insert clusters into database
-    ##########################################
-
     for cluster in clusters:
-        db_cluster = import_clustering.make_cluster_details(cluster, logical_images=summarized_logical_images)
+        db_cluster['photos'] = cluster
         db_cluster['user_id'] = USER_ID
         db_cluster['username'] = USERNAME
 
         db.clusters.insert_one(db_cluster)
+
+if run_cluster_details_step:
+
+    ##########################################
+    # Extract relevant details and insert clusters into database
+    ##########################################
+
+    if summarized_logical_images is None:
+        summarized_logical_images = list(db.logical_images.find({'user_id': USER_ID}))
+    
+    clusters = list(db.clusters.find({'user_id': USER_ID}))
+
+    for cluster in clusters:
+        db_cluster = import_clustering.make_cluster_details(cluster['photos'], logical_images=summarized_logical_images)
+        cluster.update(db_cluster)
+        db.clusters.update_one({'_id': cluster['_id']}, {'$set': cluster})
 
 if run_place_clustering_step:
 

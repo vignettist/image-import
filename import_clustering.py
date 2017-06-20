@@ -282,7 +282,26 @@ def make_cluster_details(images_list, logical_images=None):
     db_cluster['faces'] = list(itertools.chain.from_iterable(list(cluster['openfaces'])))
     db_cluster['location'] = find_common_location(cluster)
 
-    db_cluster = outline_clusters(cluster)
+    db_cluster = outline_clusters(db_cluster)
+
+    # find top three images:
+    cluster = cluster.drop([u'inception_classification', u'inception_pool', u'syntactic_fingerprint'], axis=1)
+
+    if len(cluster) > 3:
+        div_one = len(cluster)/3
+        div_two = 2*len(cluster)/3
+
+        top_images = []
+
+        images_dict = cluster.to_dict(orient='records')
+
+        top_images.append(images_dict[np.argmax(cluster[:div_one]['interest_score'])])
+        top_images.append(images_dict[np.argmax(cluster[div_one:div_two]['interest_score'])])
+        top_images.append(images_dict[np.argmax(cluster[div_two:]['interest_score'])])
+
+        db_cluster['top_images'] = top_images
+    else:
+        db_cluster['top_images'] = cluster.to_dict(orient='records')
 
     return db_cluster
 
