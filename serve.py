@@ -35,41 +35,6 @@ def generate_cluster(cluster_id):
 
     return jsonify({'response': 'okay'})
 
-@app.route('/update/<string:cluster_id>', methods=['PUT'])
-def update_cluster(cluster_id):
-    print(cluster_id)
-    clusters = list(db.clusters.find({'_id': ObjectId(cluster_id)}));
-
-    if (len(clusters) > 1):
-        return jsonify({'error': 'too many clusters'}), 500
-
-    if (len(clusters) == 0):
-        return jsonify({'error': 'no cluster with id'}), 500
-
-    cluster = clusters[0]
-
-    points = MultiPoint(cluster['locations']['coordinates'])
-    geom = {}
-    geom['type'] = 'Polygon'
-    
-    try:
-        p = points.convex_hull
-        p = p.buffer(np.sqrt(p.area) * 0.33)
-        geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
-    except:
-        p = points.buffer(0.005)
-        p = p.convex_hull
-        geom['coordinates'] = list(p.simplify(0.0005).exterior.coords)
-    
-    centroid = {'type': 'Point'}
-    centroid['coordinates'] = list(p.centroid.coords)[0]
-    
-    print(centroid)
-
-    db.clusters.update_one({'_id': cluster['_id']}, {'$set': {'boundary': geom, 'centroid': centroid}})
-
-    return jsonify({'response': 'okay'})
-
 @app.route('/split/<string:cluster_id>', methods=['GET'])
 def split_cluster(cluster_id):
     print("splitting cluster")
