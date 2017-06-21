@@ -245,7 +245,7 @@ def make_cluster_details(images_list, logical_images=None, db=None):
         query = []
         for i in range(len(images_list)):
             query.append({'_id': images_list[i]})
-        logical_images = db.logical_images.find({'$or': query})
+        logical_images = list(db.logical_images.find({'$or': query}))
 
     cluster = [li for li in logical_images if li['_id'] in images_list]
     cluster = pd.DataFrame(cluster)
