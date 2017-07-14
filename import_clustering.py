@@ -285,7 +285,7 @@ def make_cluster_details(images_list, logical_images=None, db=None):
     db_cluster = outline_clusters(db_cluster)
 
     # find top three images:
-    cluster = cluster.drop([u'inception_classification', u'inception_pool', u'syntactic_fingerprint'], axis=1)
+    cluster = cluster.drop([u'inception_classification', u'inception_pool', u'syntactic_fingerprint'], axis=1, errors='ignore')
 
     if len(cluster) > 3:
         div_one = len(cluster)/3

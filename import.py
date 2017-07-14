@@ -26,17 +26,17 @@ client = MongoClient('127.0.0.1', 3001)
 db = client.meteor
 
 PREFIX_DIR = "/Users/loganw/Documents/vignette-photos/loganw/"
-SEARCH_DIRECTORY = "/Users/loganw/Desktop/Walla Walla/"
-USER_ID = "YchQu2tWYJpspmkbf"
-USERNAME = "bilal"
+SEARCH_DIRECTORY = "/Users/loganw/Desktop/lebanon/"
+USER_ID = "KM27xnA6rMbBFiH4w"
+USERNAME = "loganw"
 
 extract_metadata_step = False
-tf_step = False
-face_step = False
-social_interest_step = False
-run_logical_images_step = False
-run_generate_clusters_step = False
-run_cluster_details_step = False
+tf_step = True
+face_step = True
+social_interest_step = True
+run_logical_images_step = True
+run_generate_clusters_step = True
+run_cluster_details_step = True
 run_place_clustering_step = True
 
 f = open("APIKEY.txt", "r")
@@ -519,6 +519,7 @@ if run_generate_clusters_step:
     clusters = import_clustering.cluster(summarized_logical_images)
 
     for cluster in clusters:
+        db_cluster = {}
         db_cluster['photos'] = cluster
         db_cluster['user_id'] = USER_ID
         db_cluster['username'] = USERNAME
